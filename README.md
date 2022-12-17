@@ -1,7 +1,7 @@
 # HoleFillingPy
 A dirty implementation of mesh hole filling with [libigl](https://github.com/libigl/libigl-python-bindings).
 
-![result](./docs/hole_filling.png)
+<img src="./docs/hole_filling.png" width="600">
 
 ## Dependencies
 ```bash
