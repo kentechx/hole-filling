@@ -225,7 +225,7 @@ def triangulation_refine_leipa(vs: np.ndarray, fs: np.ndarray, fids: np.ndarray,
 
     # update FI, remove deleted faces
     FI = np.arange(len(fs))
-    FI[out_fs[:len(fs), 0] < -1] = -1
+    FI[out_fs[:len(fs), 0] < 0] = -1
     idx = np.where(FI >= 0)[0]
     FI[idx] = np.arange(len(idx))
     out_fs = out_fs[out_fs[:, 0] >= 0]
