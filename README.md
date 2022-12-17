@@ -1,6 +1,8 @@
 # HoleFillingPy
 A dirty implementation of mesh hole filling with [libigl](https://github.com/libigl/libigl-python-bindings).
 
+![result](./docs/hole_filling.png)
+
 ## Dependencies
 ```bash
 conda install -c conda-forge igl
