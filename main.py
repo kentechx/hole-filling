@@ -173,15 +173,22 @@ def triangulation_refine_leipa(vs: np.ndarray, fs: np.ndarray, fids: np.ndarray,
         return out_vs, out_fs, np.arange(len(fs))
 
     # initialize sigma
-    l = get_mollified_edge_length(out_vs, out_fs)
-    vv_adj_list = get_vv_adj_list(out_fs, len(vs))
-    v_sigma = np.array([l[adj_vids].mean() for adj_vids in vv_adj_list])  # nv
-    if np.isnan(v_sigma).any():
+    edges = igl.edges(np.delete(out_fs, fids, axis=0))  # calculate the edge length without faces to be refined
+    edges = np.concatenate([edges, edges[:, [1, 0]]], axis=0)
+    edge_lengths = np.linalg.norm(out_vs[edges[:, 0]] - out_vs[edges[:, 1]], axis=-1)
+    edge_length_vids = edges[:, 0]
+    v_degrees = np.bincount(edge_length_vids, minlength=len(out_vs))
+    v_sigma = np.zeros(len(out_vs))
+    v_sigma[v_degrees > 0] = np.bincount(edge_length_vids, weights=edge_lengths,
+                                         minlength=len(out_vs))[v_degrees > 0] / v_degrees[v_degrees > 0]
+    if np.any(v_sigma == 0):
         print("Warning: some vertices have no adjacent faces, the refinement may be incorrect.")
-    vc_sigma = v_sigma[out_fs].mean(axis=1)  # nf
 
     all_sel_fids = np.copy(fids)
     for _ in range(100):
+        # calculate sigma of face centers
+        vc_sigma = v_sigma[out_fs].mean(axis=1)  # nf
+
         # check edge length
         s = density_factor * np.linalg.norm(
             out_vs[out_fs[all_sel_fids]].mean(1, keepdims=True) - out_vs[out_fs[all_sel_fids]], axis=-1)
@@ -193,6 +200,10 @@ def triangulation_refine_leipa(vs: np.ndarray, fs: np.ndarray, fids: np.ndarray,
 
         # subdivide
         out_vs, added_fs = igl.false_barycentric_subdivision(out_vs, out_fs[sel_fids])
+
+        # update v_sigma after subdivision
+        v_sigma = np.concatenate([v_sigma, vc_sigma[sel_fids]], axis=0)
+        assert len(v_sigma) == len(out_vs)
 
         # delete old faces from out_fs and all_sel_fids
         out_fs[sel_fids] = -1
@@ -207,21 +218,6 @@ def triangulation_refine_leipa(vs: np.ndarray, fs: np.ndarray, fids: np.ndarray,
         l = get_mollified_edge_length(out_vs, out_fs[all_sel_fids])
         _, add_fs = igl.intrinsic_delaunay_triangulation(l, out_fs[all_sel_fids])
         out_fs[all_sel_fids] = add_fs
-
-        # update vv_adj_list
-        vv_adj_list.extend([[] for _ in range(len(out_vs) - len(vv_adj_list))])
-        _vv_adj_list = get_vv_adj_list(out_fs[all_sel_fids], len(out_vs))
-        sel_vids = np.unique(out_fs[all_sel_fids])
-        for sel_vid in sel_vids:
-            vv_adj_list[sel_vid] = _vv_adj_list[sel_vid]
-
-        # update v_sigma and vc_sigma
-        v_sigma = np.concatenate([v_sigma, np.zeros(len(out_vs) - len(v_sigma))])
-        l = get_mollified_edge_length(out_vs, out_fs)
-        for sel_vid in sel_vids:
-            if sel_vid >= len(vs):
-                v_sigma[sel_vid] = l[_vv_adj_list[sel_vid]].mean()
-        vc_sigma = v_sigma[out_fs].mean(axis=1)  # nf
 
     # update FI, remove deleted faces
     FI = np.arange(len(fs))
