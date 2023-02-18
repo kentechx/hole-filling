@@ -14,6 +14,17 @@ def close_hole(vs: np.ndarray, fs: np.ndarray, hole_vids) -> np.ndarray:
     :return:
         out_fs:
     """
+    def hash_func(edges):
+        # edges: (n, 2)
+        edges = np.core.defchararray.chararray.encode(edges.astype('str'))
+        edges = np.concatenate([edges[:, 0:1], np.full_like(edges[:, 0:1], "_", dtype=str), edges[:, 1:2]], axis=1)
+        edges_hash = np.core.defchararray.add(np.core.defchararray.add(edges[:, 0], edges[:, 1]), edges[:, 2])
+        return edges_hash
+
+    # create edge hash
+    edges = igl.edges(fs)
+    edges_hash = hash_func(edges)
+
     hole_vids = np.array(hole_vids)
     if len(hole_vids) < 3:
         return fs.copy()
@@ -39,6 +50,11 @@ def close_hole(vs: np.ndarray, fs: np.ndarray, hole_vids) -> np.ndarray:
         tar_i, tar_j = -1, -1
         for i in range(len(cur_vids)):
             eu_dists = np.linalg.norm(vs[cur_vids[i]] - vs[cur_vids], axis=1)
+            # check if the edge exists
+            _edges = np.sort(np.stack([np.tile(cur_vids[i], len(cur_vids)), cur_vids], axis=1), axis=1)
+            _edges_hash = hash_func(_edges)
+            eu_dists[np.isin(_edges_hash, edges_hash, assume_unique=True)] = np.inf
+
             geo_dists = np.roll(np.roll(hole_edge_len, -i).cumsum(), i)
             geo_dists = np.roll(np.minimum(geo_dists, hole_len - geo_dists), 1)
             concave_degree = eu_dists / (geo_dists ** 2 + _epsilon)
