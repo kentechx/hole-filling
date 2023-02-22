@@ -198,6 +198,7 @@ def triangulation_refine_leipa(vs: np.ndarray, fs: np.ndarray, fids: np.ndarray,
     v_sigma[v_degrees > 0] = np.bincount(edge_length_vids, weights=edge_lengths,
                                          minlength=len(out_vs))[v_degrees > 0] / v_degrees[v_degrees > 0]
     if np.any(v_sigma == 0):
+        v_sigma[v_sigma == 0] = np.median(v_sigma[v_sigma != 0])
         print("Warning: some vertices have no adjacent faces, the refinement may be incorrect.")
 
     all_sel_fids = np.copy(fids)
