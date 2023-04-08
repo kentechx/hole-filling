@@ -22,7 +22,7 @@ setup(
     description='A simple Python package for hole filling in triangle meshes.',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/kentechx/HoleFillingPy',
+    url='https://github.com/kentechx/hole-filling',
     packages=find_packages(),
     classifiers=[
         'Programming Language :: Python :: 3',
