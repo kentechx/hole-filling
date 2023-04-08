@@ -1,4 +1,7 @@
-# HoleFillingPy
+# Mesh Hole Filling
+
+[![PyPI version](https://badge.fury.io/py/hole-filling.svg)](https://badge.fury.io/py/hole-filling)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A dirty implementation of mesh hole filling with [libigl](https://github.com/libigl/libigl-python-bindings).
 
