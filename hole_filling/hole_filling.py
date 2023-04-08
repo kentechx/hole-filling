@@ -214,7 +214,7 @@ def triangulation_refine_leipa(vs: np.ndarray, fs: np.ndarray, fids: np.ndarray,
     return out_vs, out_fs, FI
 
 
-def fill_refine_fair(vs, fs, hole_len_thr=10000, close_hole_fast=True, density_factor=np.sqrt(2), fair_alpha=0.05):
+def triangulate_refine_fair(vs, fs, hole_len_thr=10000, close_hole_fast=True, density_factor=np.sqrt(2), fair_alpha=0.05):
     # fill
     out_fs = close_holes(vs, fs, hole_len_thr, close_hole_fast)
     add_fids = np.arange(len(fs), len(out_fs))
@@ -227,13 +227,3 @@ def fill_refine_fair(vs, fs, hole_len_thr=10000, close_hole_fast=True, density_f
     # fairing
     out_vs = mesh_fair_laplacian_energy(out_vs, out_fs, add_vids, fair_alpha)
     return out_vs, out_fs
-
-
-if __name__ == '__main__':
-    vs, fs, _ = igl.read_off("data/bunny_hole.off")
-    out_vs, out_fs = fill_refine_fair(vs, fs)
-
-    colors = np.ones((len(out_vs), 3))
-    colors[np.arange(len(vs), len(out_vs))] = [0, 0, 1]
-
-    igl.write_off("data/bunny_hole_filling.off", out_vs, out_fs, colors)
