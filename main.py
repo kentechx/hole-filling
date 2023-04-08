@@ -8,12 +8,13 @@ from typing import List, Tuple
 _epsilon = 1e-16
 
 
-def close_hole(vs: np.ndarray, fs: np.ndarray, hole_vids) -> np.ndarray:
+def close_hole(vs: np.ndarray, fs: np.ndarray, hole_vids, fast=True) -> np.ndarray:
     """
     :param hole_vids: the vid sequence
     :return:
         out_fs:
     """
+
     def hash_func(edges):
         # edges: (n, 2)
         edges = np.core.defchararray.chararray.encode(edges.astype('str'))
@@ -22,8 +23,9 @@ def close_hole(vs: np.ndarray, fs: np.ndarray, hole_vids) -> np.ndarray:
         return edges_hash
 
     # create edge hash
-    edges = igl.edges(fs)
-    edges_hash = hash_func(edges)
+    if not fast:
+        edges = igl.edges(fs)
+        edges_hash = hash_func(edges)
 
     hole_vids = np.array(hole_vids)
     if len(hole_vids) < 3:
@@ -50,14 +52,16 @@ def close_hole(vs: np.ndarray, fs: np.ndarray, hole_vids) -> np.ndarray:
         tar_i, tar_j = -1, -1
         for i in range(len(cur_vids)):
             eu_dists = np.linalg.norm(vs[cur_vids[i]] - vs[cur_vids], axis=1)
-            # check if the edge exists
-            _edges = np.sort(np.stack([np.tile(cur_vids[i], len(cur_vids)), cur_vids], axis=1), axis=1)
-            _edges_hash = hash_func(_edges)
-            eu_dists[np.isin(_edges_hash, edges_hash, assume_unique=True)] = np.inf
+            if not fast:
+                # check if the edge exists
+                _edges = np.sort(np.stack([np.tile(cur_vids[i], len(cur_vids)), cur_vids], axis=1), axis=1)
+                _edges_hash = hash_func(_edges)
+                eu_dists[np.isin(_edges_hash, edges_hash, assume_unique=True)] = np.inf
 
             geo_dists = np.roll(np.roll(hole_edge_len, -i).cumsum(), i)
             geo_dists = np.roll(np.minimum(geo_dists, hole_len - geo_dists), 1)
             concave_degree = eu_dists / (geo_dists ** 2 + _epsilon)
+            concave_degree[i] = -np.inf  # there may exist two duplicate vertices
 
             _idx = 1
             j = np.argsort(concave_degree)[_idx]
@@ -76,7 +80,7 @@ def close_hole(vs: np.ndarray, fs: np.ndarray, hole_vids) -> np.ndarray:
     return out_fs
 
 
-def close_holes(vs: np.ndarray, fs: np.ndarray, hole_len_thr: float = 10000.) -> np.ndarray:
+def close_holes(vs: np.ndarray, fs: np.ndarray, hole_len_thr: float = 10000., fast=True) -> np.ndarray:
     """
     Close holes whose length is less than a given threshold.
     :param edge_len_thr:
@@ -89,48 +93,13 @@ def close_holes(vs: np.ndarray, fs: np.ndarray, hole_len_thr: float = 10000.) ->
         for b in igl.all_boundary_loop(out_fs):
             hole_edge_len = np.linalg.norm(vs[np.roll(b, -1)] - vs[b], axis=1).sum()
             if len(b) >= 3 and hole_edge_len <= hole_len_thr:
-                out_fs = close_hole(vs, out_fs, b)
+                out_fs = close_hole(vs, out_fs, b, fast)
                 updated = True
 
         if not updated:
             break
 
     return out_fs
-
-
-def get_vv_adj_list(fs, nv: int = None) -> List[List[int]]:
-    # warning: igl.adjacency_list will cause memory leak
-    if nv is None:
-        nv = fs.max() + 1
-
-    vv_adj = [set() for _ in range(nv)]
-    for f in fs:
-        vv_adj[f[0]].add(f[1])
-        vv_adj[f[0]].add(f[2])
-        vv_adj[f[1]].add(f[0])
-        vv_adj[f[1]].add(f[2])
-        vv_adj[f[2]].add(f[0])
-        vv_adj[f[2]].add(f[1])
-    return [list(i) for i in vv_adj]
-
-
-def get_vertex_neighborhood(fs: np.ndarray, vids: np.ndarray, order: int = 1):
-    """
-    Given vertex ids, get the neighborhood of the vertices. The neighborhood does not include the vertex itself.
-    """
-    vv_adj = get_vv_adj_list(fs)
-    visited = np.zeros(len(vv_adj), dtype=bool)
-    visited[vids] = True
-    nei_vids = np.unique(np.concatenate([vv_adj[i] for i in vids]))
-    for _ in range(1, order):
-        cur_vids = nei_vids[~visited[nei_vids]]
-        if len(cur_vids) == 0:
-            break
-        nei_vids = np.union1d(np.concatenate([vv_adj[i] for i in cur_vids]), nei_vids)
-        visited[cur_vids] = True
-
-    nei_vids = np.setdiff1d(nei_vids, vids)
-    return nei_vids
 
 
 def get_mollified_edge_length(vs: np.ndarray, fs: np.ndarray, mollify_factor=1e-5) -> np.ndarray:
@@ -164,7 +133,7 @@ def robust_laplacian(vs, fs, mollify_factor=1e-5) -> Tuple[scipy.sparse.csc_matr
     :param mollify_factor: the mollification factor.
     """
     lin = get_mollified_edge_length(vs, fs, mollify_factor)
-    lin, fin = igl.intrinsic_delaunay_triangulation(lin, fs)
+    lin, fin = igl.intrinsic_delaunay_triangulation(lin.astype('f8'), fs)
     L = igl.cotmatrix_intrinsic(lin, fin)
     M = igl.massmatrix_intrinsic(lin, fin, igl.MASSMATRIX_TYPE_VORONOI)
     return L, M
@@ -199,7 +168,7 @@ def triangulation_refine_leipa(vs: np.ndarray, fs: np.ndarray, fids: np.ndarray,
                                          minlength=len(out_vs))[v_degrees > 0] / v_degrees[v_degrees > 0]
     if np.any(v_sigma == 0):
         v_sigma[v_sigma == 0] = np.median(v_sigma[v_sigma != 0])
-        print("Warning: some vertices have no adjacent faces, the refinement may be incorrect.")
+        # print("Warning: some vertices have no adjacent faces, the refinement may be incorrect.")
 
     all_sel_fids = np.copy(fids)
     for _ in range(100):
@@ -233,7 +202,7 @@ def triangulation_refine_leipa(vs: np.ndarray, fs: np.ndarray, fids: np.ndarray,
 
         # delaunay
         l = get_mollified_edge_length(out_vs, out_fs[all_sel_fids])
-        _, add_fs = igl.intrinsic_delaunay_triangulation(l, out_fs[all_sel_fids])
+        _, add_fs = igl.intrinsic_delaunay_triangulation(l.astype('f8'), out_fs[all_sel_fids])
         out_fs[all_sel_fids] = add_fs
 
     # update FI, remove deleted faces
@@ -245,21 +214,26 @@ def triangulation_refine_leipa(vs: np.ndarray, fs: np.ndarray, fids: np.ndarray,
     return out_vs, out_fs, FI
 
 
-if __name__ == '__main__':
-    vs, fs, _ = igl.read_off("data/bunny_hole.off")
-    # triangulation
-    out_fs = close_holes(vs, fs)
+def fill_refine_fair(vs, fs, hole_len_thr=10000, close_hole_fast=True, density_factor=np.sqrt(2), fair_alpha=0.05):
+    # fill
+    out_fs = close_holes(vs, fs, hole_len_thr, close_hole_fast)
     add_fids = np.arange(len(fs), len(out_fs))
 
     # refine
     nv = len(vs)
-    out_vs, out_fs, FI = triangulation_refine_leipa(vs, out_fs, add_fids)
+    out_vs, out_fs, FI = triangulation_refine_leipa(vs, out_fs, add_fids, density_factor)
     add_vids = np.arange(nv, len(out_vs))
 
     # fairing
-    out_vs = mesh_fair_laplacian_energy(out_vs, out_fs, add_vids)
+    out_vs = mesh_fair_laplacian_energy(out_vs, out_fs, add_vids, fair_alpha)
+    return out_vs, out_fs
+
+
+if __name__ == '__main__':
+    vs, fs, _ = igl.read_off("data/bunny_hole.off")
+    out_vs, out_fs = fill_refine_fair(vs, fs)
 
     colors = np.ones((len(out_vs), 3))
-    colors[add_vids] = [0, 0, 1]
+    colors[np.arange(len(vs), len(out_vs))] = [0, 0, 1]
 
     igl.write_off("data/bunny_hole_filling.off", out_vs, out_fs, colors)
