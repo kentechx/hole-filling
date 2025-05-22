@@ -28,5 +28,5 @@ setup(
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',
     ],
-    install_requires=['libigl', 'scipy'],
+    install_requires=['numpy<2.0.0', 'libigl==2.4.1', 'scipy'],
 )
